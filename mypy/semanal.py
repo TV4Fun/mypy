@@ -2514,6 +2514,7 @@ class SemanticAnalyzerPass2(NodeVisitor[None],
                 self.check_decorated_function_is_method('classmethod', dec)
             elif (refers_to_fullname(d, 'builtins.property') or
                   refers_to_fullname(d, 'abc.abstractproperty')):
+                # TODO: Stop treating properties as special cases and treat as generalized descriptors
                 removed.append(i)
                 dec.func.is_property = True
                 dec.var.is_property = True
