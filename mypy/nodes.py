@@ -694,6 +694,10 @@ class Decorator(SymbolNode, Statement):
         return self.func.is_property
 
     @property
+    def is_static(self) -> bool:
+        return self.func.is_static
+
+    @property
     def is_class(self) -> bool:
         return self.func.is_class
 
