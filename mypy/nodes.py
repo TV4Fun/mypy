@@ -384,7 +384,7 @@ FUNCBASE_FLAGS = [
 
 
 class FuncBaseMeta(type):
-    def __instancecheck__(self, instance):
+    def __instancecheck__(self, instance: object) -> bool:
         if isinstance(instance, Decorator):
             if instance.is_overload:
                 return issubclass(OverloadedFuncDef, self) and instance.is_callable
@@ -685,7 +685,8 @@ class Decorator(SymbolNode, Statement):
         return self.func.fullname()
 
     @property
-    def items(self):
+    def items(self) -> List[OverloadPart]:
+        assert isinstance(self.func, OverloadedFuncDef)
         return self.func.items
 
     @property
@@ -2323,7 +2324,7 @@ class TypeInfo(SymbolNode):
     def has_readable_member(self, name: str) -> bool:
         return self.get(name) is not None
 
-    def get_method(self, name: str) -> Union[FuncBase, Decorator, None]:
+    def get_method(self, name: str) -> Optional[FuncBase]:
         for cls in self.mro:
             if name in cls.names:
                 node = cls.names[name].node

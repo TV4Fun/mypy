@@ -557,7 +557,8 @@ def analyze_class_attribute_access(itype: Instance,
             return chk.handle_partial_var_type(t, is_lvalue, symnode, context)
         if not is_method and (isinstance(t, TypeVarType) or get_type_vars(t)):
             msg.fail(messages.GENERIC_INSTANCE_VAR_CLASS_ACCESS, context)
-        is_classmethod = isinstance(node.node, FuncBase) and node.node.is_class
+        is_classmethod = ((is_decorated and cast(Decorator, node.node).func.is_class)
+                          or (isinstance(node.node, FuncBase) and node.node.is_class))
         result = add_class_tvars(t, itype, is_classmethod, builtin_type, original_type)
         if not is_lvalue:
             result = analyze_descriptor_access(original_type, result, builtin_type,
