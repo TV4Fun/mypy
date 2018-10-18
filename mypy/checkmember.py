@@ -77,7 +77,7 @@ def analyze_member_access(name: str,
 
         # Look up the member. First look up the method dictionary.
         method = info.get_method(name)
-        if method:
+        if method and not method.is_class:
             if method.is_property:
                 assert isinstance(method, OverloadedFuncDef)
                 first_item = cast(Decorator, method.items[0])

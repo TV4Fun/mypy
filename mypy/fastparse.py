@@ -871,8 +871,7 @@ class ASTConverter(ast3.NodeTransformer):
             [k.value for k in n.keywords])
         arg_kinds = ([ARG_STAR if isinstance(a, ast3.Starred) else ARG_POS for a in n.args] +
                      [ARG_STAR2 if is_star2arg(k) else ARG_NAMED for k in n.keywords])
-        expr = self.visit(n.func)
-        return CallExpr(expr,
+        return CallExpr(self.visit(n.func),
                         arg_types,
                         arg_kinds,
                         cast(List[Optional[str]], [None] * len(n.args)) +

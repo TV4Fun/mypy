@@ -196,7 +196,6 @@ class Options:
         self.verbosity = 0  # More verbose messages (for troubleshooting)
         self.pdb = False
         self.show_traceback = False
-        self.raise_exceptions = False
         self.dump_type_stats = False
         self.dump_inference_stats = False
 
