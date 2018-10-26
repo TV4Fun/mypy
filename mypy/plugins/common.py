@@ -54,6 +54,7 @@ def _get_argument(call: CallExpr, name: str) -> Optional[Expression]:
     # mypyc hack to workaround mypy misunderstanding multiple inheritance (#3603)
     callee_node = call.callee.node  # type: Any
     if not isinstance(callee_node, Var):
+        raise Exception("Thing happened!")
         callee_node = get_callable(callee_node)
     if callee_node and callee_node.type:
         callee_node_type = callee_node.type

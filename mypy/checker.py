@@ -22,7 +22,7 @@ from mypy.nodes import (
     ComparisonExpr, StarExpr, EllipsisExpr, RefExpr, PromoteExpr,
     Import, ImportFrom, ImportAll, ImportBase, TypeAlias,
     ARG_POS, ARG_STAR, LITERAL_TYPE, MDEF, GDEF, CallableDecorator,
-    CONTRAVARIANT, COVARIANT, INVARIANT, get_callable
+    CONTRAVARIANT, COVARIANT, INVARIANT,
 )
 from mypy import nodes
 from mypy.literals import literal, literal_hash
@@ -1618,15 +1618,11 @@ class TypeChecker(NodeVisitor[None], CheckerPluginInterface):
         first = base1[name]
         second = base2[name]
         first_type = first.type
-        if first_type is None:
-            method = get_callable(first.node)
-            if method:
-                first_type = self.function_type(method)
+        if first_type is None and isinstance(first.node, FuncBase):
+            first_type = self.function_type(first.node)
         second_type = second.type
-        if second_type is None:
-            method = get_callable(second.node)
-            if method:
-                second_type = self.function_type(method)
+        if second_type is None and isinstance(second.node, FuncBase):
+            second_type = self.function_type(second.node)
         # TODO: What if some classes are generic?
         if (isinstance(first_type, FunctionLike) and
                 isinstance(second_type, FunctionLike)):
@@ -3027,10 +3023,10 @@ class TypeChecker(NodeVisitor[None], CheckerPluginInterface):
                                                    callable_name=fullname)
         self.check_untyped_after_decorator(sig, e.func)
         sig = set_callable_name(sig, e.func)
-        if e.func.is_property:
-            self.check_incompatible_property_override(e)
         e.var.type = sig
         e.var.is_ready = True
+        if e.func.is_property:
+            self.check_incompatible_property_override(e)
         if isinstance(sig, CallableType):
             if e.func.is_property:
                 assert isinstance(sig, CallableType)
