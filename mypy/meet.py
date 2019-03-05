@@ -7,7 +7,7 @@ from mypy.join import (
 from mypy.types import (
     Type, AnyType, TypeVisitor, UnboundType, NoneTyp, TypeVarType, Instance, CallableType,
     TupleType, TypedDictType, ErasedType, UnionType, PartialType, DeletedType,
-    UninhabitedType, TypeType, TypeOfAny, Overloaded, FunctionLike,
+    UninhabitedType, TypeType, TypeOfAny, Overloaded, FunctionLike, LiteralType,
 )
 from mypy.subtypes import (
     is_equivalent, is_subtype, is_protocol_implementation, is_callable_compatible,
@@ -15,8 +15,8 @@ from mypy.subtypes import (
 )
 from mypy.erasetype import erase_type
 from mypy.maptype import map_instance_to_supertype
-
-from mypy import experiments
+from mypy.typeops import tuple_fallback
+from mypy import state
 
 # TODO Describe this module.
 
@@ -41,7 +41,7 @@ def narrow_declared_type(declared: Type, narrowed: Type) -> Type:
                                                 for x in declared.relevant_items()])
     elif not is_overlapping_types(declared, narrowed,
                                   prohibit_none_typevar_overlap=True):
-        if experiments.STRICT_OPTIONAL:
+        if state.strict_optional:
             return UninhabitedType()
         else:
             return NoneTyp()
@@ -50,10 +50,10 @@ def narrow_declared_type(declared: Type, narrowed: Type) -> Type:
                                                 for x in narrowed.relevant_items()])
     elif isinstance(narrowed, AnyType):
         return narrowed
-    elif isinstance(declared, (Instance, TupleType)):
-        return meet_types(declared, narrowed)
     elif isinstance(declared, TypeType) and isinstance(narrowed, TypeType):
         return TypeType.make_normalized(narrow_declared_type(declared.item, narrowed.item))
+    elif isinstance(declared, (Instance, TupleType, TypeType)):
+        return meet_types(declared, narrowed)
     return narrowed
 
 
@@ -137,7 +137,7 @@ def is_overlapping_types(left: Type,
     # When running under non-strict optional mode, simplify away types of
     # the form 'Union[A, B, C, None]' into just 'Union[A, B, C]'.
 
-    if not experiments.STRICT_OPTIONAL:
+    if not state.strict_optional:
         if isinstance(left, UnionType):
             left = UnionType.make_union(left.relevant_items())
         if isinstance(right, UnionType):
@@ -191,7 +191,7 @@ def is_overlapping_types(left: Type,
     # We must perform this check after the TypeVar checks because
     # a TypeVar could be bound to None, for example.
 
-    if experiments.STRICT_OPTIONAL and isinstance(left, NoneTyp) != isinstance(right, NoneTyp):
+    if state.strict_optional and isinstance(left, NoneTyp) != isinstance(right, NoneTyp):
         return False
 
     # Next, we handle single-variant types that may be inherently partially overlapping:
@@ -212,9 +212,9 @@ def is_overlapping_types(left: Type,
     if is_tuple(left) and is_tuple(right):
         return are_tuples_overlapping(left, right, ignore_promotions=ignore_promotions)
     elif isinstance(left, TupleType):
-        left = left.fallback
+        left = tuple_fallback(left)
     elif isinstance(right, TupleType):
-        right = right.fallback
+        right = tuple_fallback(right)
 
     # Next, we handle single-variant types that cannot be inherently partially overlapping,
     # but do require custom logic to inspect.
@@ -222,8 +222,27 @@ def is_overlapping_types(left: Type,
     # As before, we degrade into 'Instance' whenever possible.
 
     if isinstance(left, TypeType) and isinstance(right, TypeType):
-        # TODO: Can Callable[[...], T] and Type[T] be partially overlapping?
         return _is_overlapping_types(left.item, right.item)
+
+    def _type_object_overlap(left: Type, right: Type) -> bool:
+        """Special cases for type object types overlaps."""
+        # TODO: these checks are a bit in gray area, adjust if they cause problems.
+        # 1. Type[C] vs Callable[..., C], where the latter is class object.
+        if isinstance(left, TypeType) and isinstance(right, CallableType) and right.is_type_obj():
+            return _is_overlapping_types(left.item, right.ret_type)
+        # 2. Type[C] vs Meta, where Meta is a metaclass for C.
+        if (isinstance(left, TypeType) and isinstance(left.item, Instance) and
+                isinstance(right, Instance)):
+            left_meta = left.item.type.metaclass_type
+            if left_meta is not None:
+                return _is_overlapping_types(left_meta, right)
+            # builtins.type (default metaclass) overlaps with all metaclasses
+            return right.type.has_base('builtins.type')
+        # 3. Callable[..., C] vs Meta is considered below, when we switch to fallbacks.
+        return False
+
+    if isinstance(left, TypeType) or isinstance(right, TypeType):
+        return _type_object_overlap(left, right) or _type_object_overlap(right, left)
 
     if isinstance(left, CallableType) and isinstance(right, CallableType):
         return is_callable_compatible(left, right,
@@ -233,6 +252,13 @@ def is_overlapping_types(left: Type,
     elif isinstance(left, CallableType):
         left = left.fallback
     elif isinstance(right, CallableType):
+        right = right.fallback
+
+    if isinstance(left, LiteralType) and isinstance(right, LiteralType):
+        return left == right
+    elif isinstance(left, LiteralType):
+        left = left.fallback
+    elif isinstance(right, LiteralType):
         right = right.fallback
 
     # Finally, we handle the case where left and right are instances.
@@ -355,7 +381,7 @@ class TypeMeetVisitor(TypeVisitor[Type]):
 
     def visit_unbound_type(self, t: UnboundType) -> Type:
         if isinstance(self.s, NoneTyp):
-            if experiments.STRICT_OPTIONAL:
+            if state.strict_optional:
                 return AnyType(TypeOfAny.special_form)
             else:
                 return self.s
@@ -379,7 +405,7 @@ class TypeMeetVisitor(TypeVisitor[Type]):
         return UnionType.make_simplified_union(meets)
 
     def visit_none_type(self, t: NoneTyp) -> Type:
-        if experiments.STRICT_OPTIONAL:
+        if state.strict_optional:
             if isinstance(self.s, NoneTyp) or (isinstance(self.s, Instance) and
                                                self.s.type.fullname() == 'builtins.object'):
                 return t
@@ -393,7 +419,7 @@ class TypeMeetVisitor(TypeVisitor[Type]):
 
     def visit_deleted_type(self, t: DeletedType) -> Type:
         if isinstance(self.s, NoneTyp):
-            if experiments.STRICT_OPTIONAL:
+            if state.strict_optional:
                 return t
             else:
                 return self.s
@@ -423,7 +449,7 @@ class TypeMeetVisitor(TypeVisitor[Type]):
                         args.append(self.meet(t.args[i], si.args[i]))
                     return Instance(t.type, args)
                 else:
-                    if experiments.STRICT_OPTIONAL:
+                    if state.strict_optional:
                         return UninhabitedType()
                     else:
                         return NoneTyp()
@@ -434,7 +460,7 @@ class TypeMeetVisitor(TypeVisitor[Type]):
                     # See also above comment.
                     return self.s
                 else:
-                    if experiments.STRICT_OPTIONAL:
+                    if state.strict_optional:
                         return UninhabitedType()
                     else:
                         return NoneTyp()
@@ -445,6 +471,8 @@ class TypeMeetVisitor(TypeVisitor[Type]):
         elif isinstance(self.s, TypeType):
             return meet_types(t, self.s)
         elif isinstance(self.s, TupleType):
+            return meet_types(t, self.s)
+        elif isinstance(self.s, LiteralType):
             return meet_types(t, self.s)
         return self.default(self.s)
 
@@ -457,6 +485,12 @@ class TypeMeetVisitor(TypeVisitor[Type]):
                 # Return a plain None or <uninhabited> instead of a weird function.
                 return self.default(self.s)
             return result
+        elif isinstance(self.s, TypeType) and t.is_type_obj() and not t.is_generic():
+            # In this case we are able to potentially produce a better meet.
+            res = meet_types(self.s.item, t.ret_type)
+            if not isinstance(res, (NoneTyp, UninhabitedType)):
+                return TypeType.make_normalized(res)
+            return self.default(self.s)
         elif isinstance(self.s, Instance) and self.s.type.is_protocol:
             call = unpack_callback_protocol(self.s)
             if call:
@@ -488,7 +522,7 @@ class TypeMeetVisitor(TypeVisitor[Type]):
             for i in range(t.length()):
                 items.append(self.meet(t.items[i], self.s.items[i]))
             # TODO: What if the fallbacks are different?
-            return TupleType(items, t.fallback)
+            return TupleType(items, tuple_fallback(t))
         elif isinstance(self.s, Instance):
             # meet(Tuple[t1, t2, <...>], Tuple[s, ...]) == Tuple[meet(t1, s), meet(t2, s), <...>].
             if self.s.type.fullname() == 'builtins.tuple' and self.s.args:
@@ -520,6 +554,14 @@ class TypeMeetVisitor(TypeVisitor[Type]):
         else:
             return self.default(self.s)
 
+    def visit_literal_type(self, t: LiteralType) -> Type:
+        if isinstance(self.s, LiteralType) and self.s == t:
+            return t
+        elif isinstance(self.s, Instance) and is_subtype(t.fallback, self.s):
+            return t
+        else:
+            return self.default(self.s)
+
     def visit_partial_type(self, t: PartialType) -> Type:
         # We can't determine the meet of partial types. We should never get here.
         assert False, 'Internal error'
@@ -532,6 +574,8 @@ class TypeMeetVisitor(TypeVisitor[Type]):
             return typ
         elif isinstance(self.s, Instance) and self.s.type.fullname() == 'builtins.type':
             return t
+        elif isinstance(self.s, CallableType):
+            return self.meet(t, self.s)
         else:
             return self.default(self.s)
 
@@ -542,7 +586,7 @@ class TypeMeetVisitor(TypeVisitor[Type]):
         if isinstance(typ, UnboundType):
             return AnyType(TypeOfAny.special_form)
         else:
-            if experiments.STRICT_OPTIONAL:
+            if state.strict_optional:
                 return UninhabitedType()
             else:
                 return NoneTyp()

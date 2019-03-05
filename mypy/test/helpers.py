@@ -4,7 +4,6 @@ import subprocess
 import sys
 import time
 import shutil
-from os.path import dirname
 
 from typing import List, Iterable, Dict, Tuple, Callable, Any, Optional
 
@@ -126,10 +125,24 @@ def assert_module_equivalence(name: str,
                  name))
 
 
+def assert_target_equivalence(name: str,
+                              expected: Optional[List[str]], actual: List[str]) -> None:
+    """Compare actual and expected targets (order sensitive)."""
+    if expected is not None:
+        assert_string_arrays_equal(
+            expected,
+            actual,
+            ('Actual targets ({}) do not match expected targets ({}) '
+             'for "[{} ...]"').format(
+                 ', '.join(actual),
+                 ', '.join(expected),
+                 name))
+
+
 def update_testcase_output(testcase: DataDrivenTestCase, output: List[str]) -> None:
     assert testcase.old_cwd is not None, "test was not properly set up"
     testcase_path = os.path.join(testcase.old_cwd, testcase.file)
-    with open(testcase_path) as f:
+    with open(testcase_path, encoding='utf8') as f:
         data_lines = f.read().splitlines()
     test = '\n'.join(data_lines[testcase.line:testcase.lastline])
 
@@ -153,7 +166,7 @@ def update_testcase_output(testcase: DataDrivenTestCase, output: List[str]) -> N
 
     data_lines[testcase.line:testcase.lastline] = [test]
     data = '\n'.join(data_lines)
-    with open(testcase_path, 'w') as f:
+    with open(testcase_path, 'w', encoding='utf8') as f:
         print(data, file=f)
 
 
@@ -362,6 +375,10 @@ def parse_options(program_text: str, testcase: DataDrivenTestCase,
 
     if testcase.config.getoption('--mypy-verbose'):
         options.verbosity = testcase.config.getoption('--mypy-verbose')
+
+    if os.getenv('NEWSEMANAL'):
+        if not flag_list or '--no-new-semantic-analyzer' not in flag_list:
+            options.new_semantic_analyzer = True
 
     return options
 

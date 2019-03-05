@@ -5,8 +5,8 @@ from typing import List, Optional
 
 from mypy.types import (
     Type, AnyType, NoneTyp, TypeVisitor, Instance, UnboundType, TypeVarType, CallableType,
-    TupleType, TypedDictType, ErasedType, UnionType, FunctionLike, Overloaded,
-    PartialType, DeletedType, UninhabitedType, TypeType, true_or_false, TypeOfAny
+    TupleType, TypedDictType, ErasedType, UnionType, FunctionLike, Overloaded, LiteralType,
+    PartialType, DeletedType, UninhabitedType, TypeType, true_or_false, TypeOfAny,
 )
 from mypy.maptype import map_instance_to_supertype
 from mypy.subtypes import (
@@ -14,8 +14,8 @@ from mypy.subtypes import (
     is_protocol_implementation, find_member
 )
 from mypy.nodes import ARG_NAMED, ARG_NAMED_OPT
-
-from mypy import experiments
+import mypy.typeops
+from mypy import state
 
 
 def join_simple(declaration: Optional[Type], s: Type, t: Type) -> Type:
@@ -114,7 +114,7 @@ class TypeJoinVisitor(TypeVisitor[Type]):
         return t
 
     def visit_none_type(self, t: NoneTyp) -> Type:
-        if experiments.STRICT_OPTIONAL:
+        if state.strict_optional:
             if isinstance(self.s, (NoneTyp, UninhabitedType)):
                 return t
             elif isinstance(self.s, UnboundType):
@@ -162,6 +162,8 @@ class TypeJoinVisitor(TypeVisitor[Type]):
         elif isinstance(self.s, TypeType):
             return join_types(t, self.s)
         elif isinstance(self.s, TypedDictType):
+            return join_types(t, self.s)
+        elif isinstance(self.s, LiteralType):
             return join_types(t, self.s)
         else:
             return self.default(self.s)
@@ -242,7 +244,8 @@ class TypeJoinVisitor(TypeVisitor[Type]):
             items = []  # type: List[Type]
             for i in range(t.length()):
                 items.append(self.join(t.items[i], self.s.items[i]))
-            fallback = join_instances(self.s.fallback, t.fallback)
+            fallback = join_instances(mypy.typeops.tuple_fallback(self.s),
+                                      mypy.typeops.tuple_fallback(t))
             assert isinstance(fallback, Instance)
             return TupleType(items, fallback)
         else:
@@ -267,6 +270,15 @@ class TypeJoinVisitor(TypeVisitor[Type]):
         else:
             return self.default(self.s)
 
+    def visit_literal_type(self, t: LiteralType) -> Type:
+        if isinstance(self.s, LiteralType):
+            if t == self.s:
+                return t
+            else:
+                return join_types(self.s.fallback, t.fallback)
+        else:
+            return join_types(self.s, t.fallback)
+
     def visit_partial_type(self, t: PartialType) -> Type:
         # We only have partial information so we can't decide the join result. We should
         # never get here.
@@ -289,7 +301,7 @@ class TypeJoinVisitor(TypeVisitor[Type]):
         elif isinstance(typ, UnboundType):
             return AnyType(TypeOfAny.special_form)
         elif isinstance(typ, TupleType):
-            return self.default(typ.fallback)
+            return self.default(mypy.typeops.tuple_fallback(typ))
         elif isinstance(typ, TypedDictType):
             return self.default(typ.fallback)
         elif isinstance(typ, FunctionLike):

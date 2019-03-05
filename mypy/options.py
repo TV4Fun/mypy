@@ -21,6 +21,8 @@ class BuildType:
 PER_MODULE_OPTIONS = {
     # Please keep this list sorted
     "allow_untyped_globals",
+    "allow_redefinition",
+    "strict_equality",
     "always_false",
     "always_true",
     "check_untyped_defs",
@@ -43,7 +45,6 @@ PER_MODULE_OPTIONS = {
     "mypyc",
     "no_implicit_optional",
     "show_none_errors",
-    "strict_boolean",
     "strict_optional",
     "strict_optional_whitelist",
     "warn_no_return",
@@ -52,7 +53,7 @@ PER_MODULE_OPTIONS = {
 }  # type: Final
 
 OPTIONS_AFFECTING_CACHE = ((PER_MODULE_OPTIONS |
-                            {"quick_and_dirty", "platform", "bazel"})
+                            {"platform", "bazel", "plugins", "new_semantic_analyzer"})
                            - {"debug_cache"})  # type: Final
 
 
@@ -83,6 +84,9 @@ class Options:
         self.follow_imports_for_stubs = False
         # PEP 420 namespace packages
         self.namespace_packages = False
+
+        # Use the new semantic analyzer
+        self.new_semantic_analyzer = False
 
         # disallow_any options
         self.disallow_any_generics = False
@@ -131,9 +135,6 @@ class Options:
         # Files in which to ignore all non-fatal errors
         self.ignore_errors = False
 
-        # Only allow booleans in conditions
-        self.strict_boolean = False
-
         # Apply strict None checking
         self.strict_optional = True
 
@@ -153,6 +154,14 @@ class Options:
         # Suppress toplevel errors caused by missing annotations
         self.allow_untyped_globals = False
 
+        # Allow variable to be redefined with an arbitrary type in the same block
+        # and the same nesting level as the initialization
+        self.allow_redefinition = False
+
+        # Prohibit equality, identity, and container checks for non-overlapping types.
+        # This makes 1 == '1', 1 in ['1'], and 1 is '1' errors.
+        self.strict_equality = False
+
         # Variable names considered True
         self.always_true = []  # type: List[str]
 
@@ -165,15 +174,21 @@ class Options:
         # Config file name
         self.config_file = None  # type: Optional[str]
 
+        # A filename containing a JSON mapping from filenames to
+        # mtime/size/hash arrays, used to avoid having to recalculate
+        # source hashes as often.
+        self.quickstart_file = None  # type: Optional[str]
+
         # Write junit.xml to given file
         self.junit_xml = None  # type: Optional[str]
 
         # Caching and incremental checking options
         self.incremental = True
         self.cache_dir = defaults.CACHE_DIR
+        self.sqlite_cache = False
         self.debug_cache = False
-        self.quick_and_dirty = False
         self.skip_version_check = False
+        self.skip_cache_mtime_checks = False
         self.fine_grained_incremental = False
         # Include fine-grained dependencies in written cache files
         self.cache_fine_grained = False
@@ -342,7 +357,7 @@ class Options:
         parts = s.split('.')
         expr = re.escape(parts[0]) if parts[0] != '*' else '.*'
         for part in parts[1:]:
-            expr += re.escape('.' + part) if part != '*' else '(\..*)?'
+            expr += re.escape('.' + part) if part != '*' else r'(\..*)?'
         return re.compile(expr + '\\Z')
 
     def select_options_affecting_cache(self) -> Mapping[str, object]:

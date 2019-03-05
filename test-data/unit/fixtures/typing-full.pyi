@@ -28,11 +28,6 @@ ClassVar = 0
 NoReturn = 0
 NewType = 0
 
-# Type aliases.
-List = 0
-Dict = 0
-Set = 0
-
 T = TypeVar('T')
 T_co = TypeVar('T_co', covariant=True)
 T_contra = TypeVar('T_contra', contravariant=True)
@@ -44,10 +39,10 @@ S = TypeVar('S')
 # to silence the protocol variance checks. Maybe it is better to use type: ignore?
 
 @runtime
-class Container(Protocol[T_contra]):
+class Container(Protocol[T_co]):
     @abstractmethod
     # Use int because bool isn't in the default test builtins
-    def __contains__(self, arg: T_contra) -> int: pass
+    def __contains__(self, arg: object) -> int: pass
 
 @runtime
 class Sized(Protocol):
@@ -122,13 +117,11 @@ class AsyncIterator(AsyncIterable[T], Protocol):
     @abstractmethod
     def __anext__(self) -> Awaitable[T]: pass
 
-@runtime
-class Sequence(Iterable[T_co], Protocol):
+class Sequence(Iterable[T_co], Container[T_co]):
     @abstractmethod
     def __getitem__(self, n: Any) -> T_co: pass
 
-@runtime
-class Mapping(Iterable[T], Protocol[T, T_co], metaclass=ABCMeta):
+class Mapping(Iterable[T], Generic[T, T_co], metaclass=ABCMeta):
     def __getitem__(self, key: T) -> T_co: pass
     @overload
     def get(self, k: T) -> Optional[T_co]: pass
@@ -138,8 +131,7 @@ class Mapping(Iterable[T], Protocol[T, T_co], metaclass=ABCMeta):
     def __len__(self) -> int: ...
     def __contains__(self, arg: object) -> int: pass
 
-@runtime
-class MutableMapping(Mapping[T, U], Protocol, metaclass=ABCMeta):
+class MutableMapping(Mapping[T, U], metaclass=ABCMeta):
     def __setitem__(self, k: T, v: U) -> None: pass
 
 class SupportsInt(Protocol):

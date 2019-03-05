@@ -3,8 +3,9 @@ from typing import Sequence
 from mypy.types import (
     Type, UnboundType, AnyType, NoneTyp, TupleType, TypedDictType,
     UnionType, CallableType, TypeVarType, Instance, TypeVisitor, ErasedType,
-    Overloaded, PartialType, DeletedType, UninhabitedType, TypeType
+    Overloaded, PartialType, DeletedType, UninhabitedType, TypeType, LiteralType,
 )
+from mypy.typeops import tuple_fallback
 
 
 def is_same_type(left: Type, right: Type) -> bool:
@@ -77,7 +78,8 @@ class SameTypeVisitor(TypeVisitor[bool]):
     def visit_instance(self, left: Instance) -> bool:
         return (isinstance(self.right, Instance) and
                 left.type == self.right.type and
-                is_same_types(left.args, self.right.args))
+                is_same_types(left.args, self.right.args) and
+                left.final_value == self.right.final_value)
 
     def visit_type_var(self, left: TypeVarType) -> bool:
         return (isinstance(self.right, TypeVarType) and
@@ -98,7 +100,7 @@ class SameTypeVisitor(TypeVisitor[bool]):
 
     def visit_tuple_type(self, left: TupleType) -> bool:
         if isinstance(self.right, TupleType):
-            return (is_same_type(left.fallback, self.right.fallback)
+            return (is_same_type(tuple_fallback(left), tuple_fallback(self.right))
                     and is_same_types(left.items, self.right.items))
         else:
             return False
@@ -111,6 +113,14 @@ class SameTypeVisitor(TypeVisitor[bool]):
                 if not is_same_type(left_item_type, right_item_type):
                     return False
             return True
+        else:
+            return False
+
+    def visit_literal_type(self, left: LiteralType) -> bool:
+        if isinstance(self.right, LiteralType):
+            if left.value != self.right.value:
+                return False
+            return is_same_type(left.fallback, self.right.fallback)
         else:
             return False
 

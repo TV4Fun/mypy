@@ -16,12 +16,16 @@ Mypy is a static type checker for Python 3 and Python 2.7.
    getting_started
    existing_code
 
+.. _overview-cheat-sheets:
+
 .. toctree::
    :maxdepth: 2
    :caption: Cheat sheets
 
    cheat_sheet_py3
    cheat_sheet
+
+.. _overview-type-system-reference:
 
 .. toctree::
    :maxdepth: 2
@@ -39,6 +43,8 @@ Mypy is a static type checker for Python 3 and Python 2.7.
    stubs
    generics
    more_types
+   literal_types
+   final_attrs
    metaclasses
 
 .. toctree::
@@ -51,6 +57,7 @@ Mypy is a static type checker for Python 3 and Python 2.7.
    mypy_daemon
    installed_packages
    extending_mypy
+   stubgen
 
 .. toctree::
    :maxdepth: 2
@@ -61,7 +68,6 @@ Mypy is a static type checker for Python 3 and Python 2.7.
    python36
    additional_features
    faq
-   revision_history
 
 Indices and tables
 ==================

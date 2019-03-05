@@ -1,4 +1,6 @@
-from typing import Iterable, Iterator, TypeVar, List, Mapping, overload, Tuple, Set, Union, Generic
+from typing import (
+    Iterable, Iterator, TypeVar, List, Mapping, overload, Tuple, Set, Union, Generic, Sequence
+)
 
 class object:
     def __init__(self) -> None: pass
@@ -27,12 +29,13 @@ VT = TypeVar('VT')
 class tuple(Generic[T]):
     def __len__(self) -> int: pass
 
-class list(Generic[T]):
+class list(Sequence[T]):
     def __iter__(self) -> Iterator[T]: pass
     def __mul__(self, x: int) -> list[T]: pass
     def __setitem__(self, x: int, v: T) -> None: pass
     def __getitem__(self, x: int) -> T: pass
     def __add__(self, x: List[T]) -> T: pass
+    def __contains__(self, item: object) -> bool: pass
 
 class dict(Mapping[KT, VT]):
     @overload

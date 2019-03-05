@@ -1,12 +1,12 @@
 from typing import List, Optional, Any
 
 from mypy.nodes import (
-    ARG_POS, MDEF, Argument, Block, CallExpr, Expression, FuncDef,
-    PassStmt, RefExpr, SymbolTableNode, Var, get_callable
+    ARG_POS, MDEF, Argument, Block, CallExpr, Expression, FuncDef, FuncBase, SYMBOL_FUNCBASE_TYPES,
+    PassStmt, RefExpr, SymbolTableNode, Var, get_callable, StrExpr,
 )
 from mypy.plugin import ClassDefContext
 from mypy.semanal import set_callable_name
-from mypy.types import CallableType, Overloaded, Type, TypeVarDef
+from mypy.types import CallableType, Overloaded, Type, TypeVarDef, LiteralType, Instance
 from mypy.typevars import fill_typevars
 
 
@@ -51,8 +51,7 @@ def _get_argument(call: CallExpr, name: str) -> Optional[Expression]:
         return None
 
     callee_type = None
-    # mypyc hack to workaround mypy misunderstanding multiple inheritance (#3603)
-    callee_node = call.callee.node  # type: Any
+    callee_node = call.callee.node
     if not isinstance(callee_node, Var):
         raise Exception("Thing happened!")
         callee_node = get_callable(callee_node)
@@ -80,7 +79,7 @@ def _get_argument(call: CallExpr, name: str) -> Optional[Expression]:
     return None
 
 
-def _add_method(
+def add_method(
         ctx: ClassDefContext,
         name: str,
         args: List[Argument],
@@ -112,5 +111,22 @@ def _add_method(
     func._fullname = info.fullname() + '.' + name
     func.line = info.line
 
-    info.names[name] = SymbolTableNode(MDEF, func)
+    info.names[name] = SymbolTableNode(MDEF, func, plugin_generated=True)
     info.defn.defs.body.append(func)
+
+
+def try_getting_str_literal(expr: Expression, typ: Type) -> Optional[str]:
+    """If this expression is a string literal, or if the corresponding type
+    is something like 'Literal["some string here"]', returns the underlying
+    string value. Otherwise, returns None."""
+    if isinstance(typ, Instance) and typ.final_value is not None:
+        typ = typ.final_value
+
+    if isinstance(typ, LiteralType) and typ.fallback.type.fullname() == 'builtins.str':
+        val = typ.value
+        assert isinstance(val, str)
+        return val
+    elif isinstance(expr, StrExpr):
+        return expr.value
+    else:
+        return None

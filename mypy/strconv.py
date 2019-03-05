@@ -158,7 +158,9 @@ class StrConv(NodeVisitor[str]):
         # (in this case base_type_exprs is empty).
         if o.base_type_exprs:
             if o.info and o.info.bases:
-                a.insert(1, ('BaseType', o.info.bases))
+                if (len(o.info.bases) != 1
+                        or o.info.bases[0].type.fullname() != 'builtins.object'):
+                    a.insert(1, ('BaseType', o.info.bases))
             else:
                 a.insert(1, ('BaseTypeExpr', o.base_type_exprs))
         if o.type_vars:
@@ -357,8 +359,10 @@ class StrConv(NodeVisitor[str]):
             id = self.format_id(target_node)
         else:
             id = ''
-        if kind == mypy.nodes.GDEF or (fullname != name and
-                                       fullname is not None):
+        if isinstance(target_node, mypy.nodes.MypyFile) and name == fullname:
+            n += id
+        elif kind == mypy.nodes.GDEF or (fullname != name and
+                                         fullname is not None):
             # Append fully qualified name for global references.
             n += ' [{}{}]'.format(fullname, id)
         elif kind == mypy.nodes.LDEF:
@@ -440,7 +444,7 @@ class StrConv(NodeVisitor[str]):
         return self.dump([o.base, o.index], o)
 
     def visit_super_expr(self, o: 'mypy.nodes.SuperExpr') -> str:
-        return self.dump([o.name], o)
+        return self.dump([o.name, o.call], o)
 
     def visit_type_application(self, o: 'mypy.nodes.TypeApplication') -> str:
         return self.dump([o.expr, ('Types', o.types)], o)

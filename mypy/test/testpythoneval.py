@@ -56,6 +56,8 @@ def test_python_evaluation(testcase: DataDrivenTestCase, cache_dir: str) -> None
         '--no-strict-optional',
         '--no-silence-site-packages',
     ]
+    if testcase.name.lower().endswith('_newsemanal'):
+        mypy_cmdline.append('--new-semantic-analyzer')
     py2 = testcase.name.lower().endswith('python2')
     if py2:
         mypy_cmdline.append('--py2')
@@ -73,7 +75,7 @@ def test_python_evaluation(testcase: DataDrivenTestCase, cache_dir: str) -> None
     program = '_' + testcase.name + '.py'
     program_path = os.path.join(test_temp_dir, program)
     mypy_cmdline.append(program_path)
-    with open(program_path, 'w') as file:
+    with open(program_path, 'w', encoding='utf8') as file:
         for s in testcase.input:
             file.write('{}\n'.format(s))
     mypy_cmdline.append('--cache-dir={}'.format(cache_dir))
@@ -92,6 +94,9 @@ def test_python_evaluation(testcase: DataDrivenTestCase, cache_dir: str) -> None
         output.extend(interp_out)
     # Remove temp file.
     os.remove(program_path)
+    for i, line in enumerate(output):
+        if os.path.sep + 'typeshed' + os.path.sep in line:
+            output[i] = line.split(os.path.sep)[-1]
     assert_string_arrays_equal(adapt_output(testcase), output,
                                'Invalid output ({}, line {})'.format(
                                    testcase.file, testcase.line))
